@@ -21,6 +21,7 @@
  * questions.
  */
 
+import java.io.BufferedInputStream;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -153,23 +154,24 @@ public class TransferTo {
     }
 
     /*
-     * Special test for file-to-file transfer of more than two GB.
-     * This test covers multiple iterations of FileChannel.transerTo(FileChannel),
+     * Special test for file-to-stream transfer of more than two GB.
+     * This test covers multiple iterations of FileChannel.transferTo(WritableByteChannel),
      * which ChannelInputStream.transferTo() only applies in this particular case,
      * and cannot get tested using a single byte[] due to size limitation of arrays.
      */
     @Test
-    public void testMoreThanTwoGB() throws IOException {
-        Path sourceFile = Files.createTempFile(CWD, "test2GBSource", null);
+    public void testMoreThanTwoGBtoStream() throws IOException {
+        Path sourceFile = Files.createTempFile(CWD, "test2GBtoStreamSource", null);
         try {
             // preparing two temporary files which will be compared at the end of the test
-            Path targetFile = Files.createTempFile(CWD, "test2GBtarget", null);
+            Path targetFile = Files.createTempFile(CWD, "test2GBtoStreamTarget", null);
             try {
                 // writing 3 GB of random bytes into source file
                 for (int i = 0; i < NUM_WRITES; i++)
                     Files.write(sourceFile, createRandomBytes(BYTES_PER_WRITE, 0), StandardOpenOption.APPEND);
 
-                // performing actual transfer, effectively by multiple invocations of Filechannel.transferTo(FileChannel)
+                // performing actual transfer, effectively by multiple invocations of
+                // FileChannel.transferTo(WritableByteChannel)
                 long count;
                 try (InputStream inputStream = Channels.newInputStream(FileChannel.open(sourceFile));
                      OutputStream outputStream = Channels
@@ -191,6 +193,47 @@ public class TransferTo {
         }
     }
 
+    /*
+     * Special test for stream-to-file transfer of more than two GB.
+     * This test covers multiple iterations of FileChannel.transferFrom(ReadableByteChannel),
+     * which ChannelInputStream.transferTo() only applies in this particular case,
+     * and cannot get tested using a single byte[] due to size limitation of arrays.
+     */
+    @Test
+    public void testMoreThanTwoGBfromStream() throws IOException {
+        Path sourceFile = Files.createTempFile(CWD, "test2GBfromStreamSource", null);
+        try {
+            // preparing two temporary files which will be compared at the end of the test
+            Path targetFile = Files.createTempFile(CWD, "test2GBfromStreamTarget", null);
+            try {
+                // writing 3 GB of random bytes into source file
+                for (int i = 0; i < NUM_WRITES; i++)
+                    Files.write(sourceFile, createRandomBytes(BYTES_PER_WRITE, 0), StandardOpenOption.APPEND);
+
+                // performing actual transfer, effectively by multiple invocations of
+                // FileChannel.transferFrom(ReadableByteChannel)
+                long count;
+                try (InputStream inputStream = Channels.newInputStream(Channels.newChannel(
+                        new BufferedInputStream(Files.newInputStream(sourceFile))));
+                     OutputStream outputStream = Channels
+                             .newOutputStream(FileChannel.open(targetFile, StandardOpenOption.WRITE))) {
+                    count = inputStream.transferTo(outputStream);
+                }
+
+                // comparing reported transferred bytes, must be 3 GB
+                assertEquals(count, BYTES_WRITTEN);
+
+                // comparing content of both files, failing in case of any difference
+                assertEquals(Files.mismatch(sourceFile, targetFile), -1);
+
+            } finally {
+                 Files.delete(targetFile);
+            }
+        } finally {
+            Files.delete(sourceFile);
+        }
+    }
+    
     /*
      * Special test whether selectable channel based transfer throws blocking mode exception.
      */
