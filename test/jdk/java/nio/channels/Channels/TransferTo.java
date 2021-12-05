@@ -92,8 +92,14 @@ public class TransferTo {
             // tests FileChannel.transferTo(SelectableChannelOutput) optimized case
             { fileChannelInput(), selectableChannelOutput() },
 
-            // tests FileChannel.transferTo(WritableChannelOutput) optimized case
+            // tests FileChannel.transferTo(WritableByteChannelOutput) optimized case
             { fileChannelInput(), writableByteChannelOutput() },
+
+            // tests FileChannel.transferFrom(SelectableChannelOutput) optimized case
+            { selectableChannelInput(), fileChannelOutput() },
+
+            // tests FileChannel.transferFrom(ReadableByteChannelInput) optimized case
+            { readableByteChannelInput(), fileChannelOutput() },
 
             // tests InputStream.transferTo(OutputStream) default case
             { readableByteChannelInput(), defaultOutput() }
@@ -310,6 +316,25 @@ public class TransferTo {
     }
 
     /*
+     * Creates a provider for an input stream which wraps a selectable channel
+     */
+    private static InputStreamProvider selectableChannelInput() throws IOException {
+        return new InputStreamProvider() {
+            public InputStream input(byte... bytes) throws Exception {
+                Pipe pipe = Pipe.open();
+                new Thread(() -> {
+                    try (OutputStream os = Channels.newOutputStream(pipe.sink())) {
+                      os.write(bytes);
+                    } catch (IOException e) {
+                        throw new RuntimeException(e);
+                    }
+                }).start();
+                return Channels.newInputStream(pipe.source());
+            }
+        };
+    }
+
+    /*
      * Creates a provider for an output stream which wraps a file channel
      */
     private static OutputStreamProvider fileChannelOutput() {
@@ -329,6 +354,9 @@ public class TransferTo {
         };
     }
 
+    /*
+     * Creates a provider for an output stream which wraps a selectable channel
+     */
     private static OutputStreamProvider selectableChannelOutput() throws IOException {
         return new OutputStreamProvider() {
             public OutputStream output(Consumer<Supplier<byte[]>> spy) throws Exception {
@@ -355,6 +383,9 @@ public class TransferTo {
         };
     }
 
+    /*
+     * Creates a provider for an output stream which wraps a writable byte channel but is not a file channel
+     */
     private static OutputStreamProvider writableByteChannelOutput() {
         return new OutputStreamProvider() {
             public OutputStream output(Consumer<Supplier<byte[]>> spy) throws Exception {

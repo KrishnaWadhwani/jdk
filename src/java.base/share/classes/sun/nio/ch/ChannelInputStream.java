@@ -238,23 +238,34 @@ public class ChannelInputStream
     public long transferTo(OutputStream out) throws IOException {
         Objects.requireNonNull(out, "out");
 
-        if (out instanceof ChannelOutputStream cos
-                && ch instanceof FileChannel fc) {
-            WritableByteChannel wbc = cos.channel();
+        if (out instanceof ChannelOutputStream cos) {
+            if (ch instanceof FileChannel fc) {
+                WritableByteChannel wbc = cos.channel();
 
-            if (wbc instanceof FileChannel dst) {
-                return transfer(fc, dst);
-            }
-
-            if (wbc instanceof SelectableChannel sc) {
-                synchronized (sc.blockingLock()) {
-                    if (!sc.isBlocking())
-                        throw new IllegalBlockingModeException();
-                    return transfer(fc, wbc);
+                if (wbc instanceof SelectableChannel sc) {
+                    synchronized (sc.blockingLock()) {
+                        if (!sc.isBlocking())
+                            throw new IllegalBlockingModeException();
+                        return transfer(fc, wbc);
+                    }
                 }
+
+                return transfer(fc, wbc);
             }
 
-            return transfer(fc, wbc);
+            if (cos.channel() instanceof FileChannel fc) {
+                ReadableByteChannel rbc = ch;
+
+                if (rbc instanceof SelectableChannel sc) {
+                    synchronized (sc.blockingLock()) {
+                        if (!sc.isBlocking())
+                            throw new IllegalBlockingModeException();
+                        return transfer(rbc, fc);
+                    }
+                }
+
+                return transfer(rbc, fc);
+            }
         }
 
         return super.transferTo(out);
@@ -269,6 +280,30 @@ public class ChannelInputStream
             }
         } finally {
             src.position(pos);
+        }
+        return pos - initialPos;
+    }
+
+    private static long transfer(ReadableByteChannel src, FileChannel dst) throws IOException {
+        long initialPos = dst.position();
+        long pos = initialPos;
+        ByteBuffer bb = Util.getTemporaryDirectBuffer(DEFAULT_BUFFER_SIZE);
+        try {
+            for (int bytesRead = 0; bytesRead > -1;) {
+                pos += dst.transferFrom(src, pos, Long.MAX_VALUE);
+                bytesRead = src.read(bb); // detect end-of-stream
+                if (bytesRead > -1) {
+                    bb.flip();
+                    while (bb.hasRemaining()) {
+                        dst.write(bb);
+                    }
+                    bb.clear();
+                    pos += bytesRead;
+                }
+            };
+        } finally {
+            dst.position(pos);
+            Util.releaseTemporaryDirectBuffer(bb);
         }
         return pos - initialPos;
     }
