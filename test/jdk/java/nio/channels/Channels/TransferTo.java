@@ -233,7 +233,7 @@ public class TransferTo {
             Files.delete(sourceFile);
         }
     }
-    
+
     /*
      * Special test whether selectable channel based transfer throws blocking mode exception.
      */
