@@ -1,4 +1,4 @@
-# Welcome to the JDK!
+# Welcome to the OpenJDK!
 
 For build instructions please see the
 [online documentation](https://openjdk.java.net/groups/build/doc/building.html),
